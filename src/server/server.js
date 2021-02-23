@@ -10,16 +10,29 @@ import { StaticRouter } from 'react-router-dom';
 import { renderRoutes } from 'react-router-config';
 import { Provider } from 'react-redux';
 import { createStore } from 'redux';
+
+import axios from 'axios';
+import passport from 'passport';
+import boom from '@hapi/boom';
+import cookieParser from 'cookie-parser';
+
 import reducer from '../frontend/reducers';
 import Layout from '../frontend/components/Layout';
-import initialState from '../frontend/initialState';
 import serverRoutes from '../frontend/routes/serverRoutes';
 import getManifest from './getManifest';
+
 
 dotenv.config();
 
 const app = express();
 const { ENV, PORT } = process.env;
+
+app.use(express.json());
+app.use(cookieParser());
+app.use(passport.initialize());
+app.use(passport.session());
+
+require('./utils/auth/strategies/basic');
 
 if (ENV === 'development') {
   const webPackConfig = require('../../webpack.config');
@@ -68,19 +81,94 @@ const setResponse = (html, preloadedState, manifest) => {
 };
 
 const renderApp = (req, res) => {
+
+  let initialState;
+  const { email, name, id } = req.cookies;
+  if(id){
+    initialState = {
+      user: {
+        email, name, id,
+      },
+      searchElement: [],
+      myList: [],
+      trends: [],
+      originals: [],
+    };
+  } else {
+    initialState = {
+      user: {},
+      searchElement: [],
+      myList: [],
+      trends: [],
+      originals: [],
+    };
+  }
+
   const store = createStore(reducer, initialState);
   const preloadedState = store.getState();
+  const isLogged = (initialState.user.id);
   const html = renderToString(
     <Provider store={store}>
       <StaticRouter location={req.url} context={{}}>
         <Layout>
-          {renderRoutes(serverRoutes)}
+          {renderRoutes(serverRoutes(isLogged))}
         </Layout>
       </StaticRouter>
     </Provider>
   )
   res.send(setResponse(html, preloadedState, req.hashManifest));
 };
+
+app.post("/auth/sign-in", async function(req, res, next) {
+  passport.authenticate("basic", function(error, data) {
+    try {
+      if (error || !data) {
+        next(boom.unauthorized());
+      }
+
+      req.login(data, { session: false }, async function(err) {
+        if (err) {
+          next(err);
+        }
+
+        const { token, ...user } = data;
+
+        res.cookie("token", token, {
+          httpOnly: !(ENV === 'development'),
+          secure: !(ENV === 'development')
+        });
+
+        res.status(200).json(user);
+      });
+    } catch (err) {
+      next(err);
+    }
+  })(req, res, next);
+});
+
+app.post("/auth/sign-up", async function(req, res, next) {
+  const { body: user } = req;
+
+  try {
+    const userData = await axios({
+      url: `${process.env.API_URL}/api/auth/sign-up`,
+      method: "post",
+      data: {
+        'email': user.email,
+        'name': user.name,
+        'password': user.password
+      }
+    });
+
+    res.status(201).json({
+      name: req.body.name,
+      email: req.body.email,
+      id: userData.data.id
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.get('*', renderApp);
 

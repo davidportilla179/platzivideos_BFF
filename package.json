@@ -15,7 +15,7 @@
     "react",
     "webpack"
   ],
-  "author": "Oscar Barajas <oscar@platzi.com>",
+  "author": "David Portilla",
   "license": "MIT",
   "dependencies": {
     "@babel/core": "^7.8.3",
@@ -85,5 +85,8 @@
       "\\.(jpg|jpeg|png|gif)$": "<rootDir>/src/frontend/__mocks__/fileMock.js",
       "\\.(scss|css|sass)$": "<rootDir>/src/frontend/__mocks__/styleMock.js"
     }
+  },
+  "engines": {
+    "node": "12.16.x"
   }
 }
